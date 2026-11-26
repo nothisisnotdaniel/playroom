@@ -19,7 +19,11 @@ and `/game rework <id> <note>` in Claude Code.
 ## Needs
 
 - .NET 10 SDK.
-- The RoomKit 0.3.1-local.1 package in the local feed at `~/Library/Application Support/RoomKit/feed` (see `nuget.config`).
+- The RoomKit 0.1.0 package in the local feed at `~/Library/Application Support/RoomKit/feed` (see `nuget.config`):
+
+  ```bash
+  gh release download v0.1.0 --repo nothisisnotdaniel/roomkit --pattern RoomKit.0.1.0.nupkg --dir ~/Library/Application\ Support/RoomKit/feed
+  ```
 
 ## Run it
 
@@ -60,8 +64,25 @@ scripts/launch-agent.sh install --factory-root /path/to/GameFactory --tailnet-ho
 ```
 
 Run it again after you pull changes: it publishes the server again and restarts it. `scripts/launch-agent.ps1` sets
-up the Windows tasks. Releases would come from `nothisisnotdaniel/playroom`, which has none yet, so use the install
-from source above rather than `--release`.
+up the Windows tasks.
+
+To get updates automatically, install from a release instead (the newest one, or name a tag after `--release`), with
+the same options:
+
+```bash
+scripts/launch-agent.sh install --release --factory-root /path/to/GameFactory --tailnet-host <mac>.<tailnet>.ts.net --tailnet-port 8443 --push-subject mailto:<you>@<your-domain>
+```
+
+That also installs the updater `local.playroom.updater`. Then turn on "Install updates automatically" in the app and
+pick the channel: stable (releases) or develop (a prerelease for every push to `develop`). The updater never swaps the
+server while a factory job is running.
+
+## Releases
+
+`.github/workflows/release.yml` builds the macOS (Apple silicon) tarball. Every push to `develop` makes a
+`-develop` prerelease; a pull request from `develop` into `main` titled `release vX.Y.Z` makes release vX.Y.Z once it
+is merged. Builds are not signed yet: committing `signing-cert.sha1` and setting the `SIGNING_CERT_P12` and
+`SIGNING_CERT_PASSWORD` secrets turns signing on (as in ControlRoom).
 
 PlayRoom and ControlRoom can run side by side: they use different ports (8110 and 8100), folders and labels.
 

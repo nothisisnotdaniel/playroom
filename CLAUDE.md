@@ -5,14 +5,14 @@ Every agent reads this file before working on PlayRoom. Keep it short and accura
 - **What it is:** the control room for GameFactory. A small ASP.NET Core server on the user's Mac reads a
   GameFactory root (the folder that holds `factory/` and the game folders) and serves one web app (browser and
   home-screen PWA): jobs with their playtest results and screenshots, the backlogs with feel checks, one card per
-  game, and each game's asset ledger. It is built on **RoomKit 0.3.1-local.1** (0.3.0 plus `--TailnetPort`, packed locally from ControlRoom `develop`) the same way ControlRoom is: RoomKit gives the
+  game, and each game's asset ledger. It is built on **RoomKit 0.1.0** (from `nothisisnotdaniel/roomkit`, restored from the local folder feed `~/Library/Application Support/RoomKit/feed`) the same way ControlRoom is: RoomKit gives the
   host, token gate, `Host` check, CSP, push, update check, backlogs, stories, search, capture, history and doctor;
   PlayRoom adds GameFactory's job format (`GameJobFormat`, `IJobFormat`) and its own read-only endpoints.
 - **Shared code comes from RoomKit only.** Never copy RoomKit's (or ControlRoom's) source into this repo. A change
   that belongs to every room goes to RoomKit; PlayRoom takes a new package version.
 - **Identity, which must never clash with ControlRoom:** port `8110`, data folder
   `~/Library/Application Support/PlayRoom/` (token `access-token`), LaunchAgent labels `local.playroom.server` and
-  `local.playroom.updater`, release repository `nothisisnotdaniel/playroom` (private, no releases yet),
+  `local.playroom.updater`, release repository `nothisisnotdaniel/playroom` (public: the installer and updater read it without a token),
   release archives `playroom-*`, Windows tasks prefixed `PlayRoom`. These values sit in `PlayRoomApp.Options` and
   in the app block at the top of each script in `scripts/`; change them together.
 - **Factory root:** always given with `--FactoryRoot <path>` (there is no parent-folder default: PlayRoom does not
@@ -36,4 +36,10 @@ Every agent reads this file before working on PlayRoom. Keep it short and accura
   `dotnet run --project src/PlayRoom.Server -- token` prints the access token.
 - **Tests** build fake factory roots in temp folders (`TempFactoryRoot`, `GameSamples`), with fake job folders,
   records and PNG shots, and never read a real factory root or the user's token.
-- **Git:** work lands on `develop`; `main` holds releases only. There is no remote.
+- **Git:** work lands on `develop`; `main` holds releases only. The remote is `nothisisnotdaniel/playroom`.
+- **Releases:** `.github/workflows/release.yml` (macOS osx-arm64 only). A push to `develop` makes a prerelease
+  `vX.Y.(Z+1)-develop.<run>`; a merged pull request from `develop` into `main` titled `release vX.Y.Z` makes a release.
+  The workflow downloads the RoomKit version pinned in `PlayRoom.Server.csproj` from RoomKit's GitHub release (checked
+  against its `SHA256SUMS` and attestation) into the folder feed. A new RoomKit means: bump the version in the csproj,
+  put the `.nupkg` in the local feed (`gh release download v<version> --repo nothisisnotdaniel/roomkit`), and take
+  over the package's `scripts/` keeping each app block. Builds are unsigned until `signing-cert.sha1` is committed.

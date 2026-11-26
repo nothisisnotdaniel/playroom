@@ -1,0 +1,472 @@
+# Builds PlayRoom for macOS on Apple silicon from one release commit, in three jobs:
+# - version checks the event and works out the release version and commit.
+# - macos fetches the pinned RoomKit package, runs the tests, publishes, signs (once signing-cert.sha1 is
+#   committed), smoke-checks and packs the osx-arm64 tarball, reports its SHA-256 as a job output (tarball_sha256)
+#   and uploads it as an artifact.
+# - release needs version and macos. It downloads the artifact, checks it against the reported hash (exactly the
+#   one expected file), then sums, attests and publishes it. Only this job has write permissions, and it builds
+#   nothing itself.
+# - A push to develop makes a prerelease vX.Y.(Z+1)-develop.<run number>, one patch above the highest
+#   release tag (.github/scripts/develop-version.sh), on the pushed commit. A push that changes only
+#   backlog.md or backlog/ is skipped (paths-ignore), so it makes no prerelease.
+# - A merged pull request from develop into main, titled "release vX.Y.Z", makes a release: vX.Y.Z (and
+#   its tag) on the merge commit (.github/scripts/release-version.sh). Closed-unmerged PRs, PRs from other
+#   branches and fork PRs are skipped by the version job's if:, and its first step checks the same again.
+# - After a proper release vX.Y.Z, every -develop prerelease at or below X.Y.Z is deleted with its tag
+#   (.github/scripts/old-prereleases.sh). A failed prune only warns (continue-on-error); the release counts.
+# - The release holds playroom-<version>-osx-arm64.tar.gz (one top folder playroom-<version>-osx-arm64/ with the
+#   self-contained publish output, wwwroot/ and updater.sh included) and SHA256SUMS, plus a build-provenance
+#   attestation for the tarball (check it with: gh attestation verify <tarball> --repo nothisisnotdaniel/playroom).
+#   scripts/launch-agent.sh install --release [vX.Y.Z] installs it, and the updater installs newer ones.
+#   There is no Windows build yet.
+# - RoomKit is the version pinned in src/PlayRoom.Server/PlayRoom.Server.csproj. The macos job downloads
+#   RoomKit.<version>.nupkg from the public release v<version> of nothisisnotdaniel/roomkit, checks it against that
+#   release's SHA256SUMS and its build-provenance attestation, and puts it in the local folder feed nuget.config
+#   names. No package registry, token scope or secret is needed.
+# - Once signing-cert.sha1 is committed, every macOS build is signed with that self-signed certificate (steps Sign
+#   and Verify signature), and install --release and the updater refuse any build that is not. The signing secrets
+#   (SIGNING_CERT_P12, SIGNING_CERT_PASSWORD) reach only the Sign step.
+# Refs, PR fields, job outputs and the run number reach the shell only through environment variables (GITHUB_REF,
+# GITHUB_SHA, GITHUB_RUN_NUMBER and the env: blocks), never through ${{ }} inside a run: script.
+# Actions are pinned to full commit SHAs (the tag each one had is in the trailing comment), so a moved tag
+# cannot run new code with the contents: write token.
+name: Release
+
+on:
+  push:
+    branches:
+      - "develop"
+    paths-ignore:
+      - "backlog.md"
+      - "backlog/**"
+  pull_request:
+    types:
+      - "closed"
+    branches:
+      - "main"
+
+permissions: {}
+
+jobs:
+  version:
+    # Every push to develop runs; a pull_request event runs only for a merged PR from develop in this repository.
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository)
+    # macos-15 is an Apple silicon (arm64) runner; the first step checks it.
+    runs-on: macos-15
+    permissions:
+      contents: read
+    outputs:
+      release_version: ${{ steps.version.outputs.RELEASE_VERSION }}
+      release_target: ${{ steps.version.outputs.RELEASE_TARGET }}
+    env:
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_MERGED: ${{ github.event.pull_request.merged }}
+      PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # No later step needs git credentials (gh uses GH_TOKEN), so the write token is not left in .git/config.
+          persist-credentials: false
+          # All history and tags: the tags are read by develop-version.sh and release-version.sh, and the
+          # merge commit is checked against origin/main.
+          fetch-depth: 0
+          # A release PR builds its merge commit; empty for a push, which keeps the pushed commit.
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Check the event
+        run: |
+          if [ "$(uname -m)" != "arm64" ]; then
+            echo "The runner is not arm64" >&2
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/develop" ]; then
+              echo "Prereleases are made only for pushes to develop" >&2
+              exit 1
+            fi
+            case "$GITHUB_SHA" in
+              '' | *[!0-9a-f]*)
+                echo "The pushed commit is not a lowercase hex commit id" >&2
+                exit 1
+                ;;
+            esac
+            if [ "${#GITHUB_SHA}" -ne 40 ]; then
+              echo "The pushed commit is not 40 characters long" >&2
+              exit 1
+            fi
+            if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+              echo "The checked-out commit is not the pushed commit" >&2
+              exit 1
+            fi
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            if [ "$PR_MERGED" != "true" ]; then
+              echo "Pull request is not merged; nothing to release" >&2
+              exit 1
+            fi
+            if [ "$PR_HEAD_REF" != "develop" ]; then
+              echo "Release pull requests must come from develop" >&2
+              exit 1
+            fi
+            if [ "$PR_HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+              echo "Release pull requests must come from this repository" >&2
+              exit 1
+            fi
+            case "$MERGE_SHA" in
+              '' | *[!0-9a-f]*)
+                echo "The merge commit is not a lowercase hex commit id" >&2
+                exit 1
+                ;;
+            esac
+            if [ "${#MERGE_SHA}" -ne 40 ]; then
+              echo "The merge commit is not 40 characters long" >&2
+              exit 1
+            fi
+            if [ "$(git rev-parse HEAD)" != "$MERGE_SHA" ]; then
+              echo "The checked-out commit is not the merge commit" >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$MERGE_SHA" origin/main; then
+              echo "The merge commit is not on main" >&2
+              exit 1
+            fi
+          else
+            echo "Only a push to develop or a merged release pull request makes a release" >&2
+            exit 1
+          fi
+
+      - name: Version
+        id: version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            # Push to develop: one patch above the highest release tag, as a prerelease.
+            if ! RELEASE_VERSION="$(git tag --list 'v*' | sh .github/scripts/develop-version.sh "$GITHUB_RUN_NUMBER")"; then
+              echo "The run number does not make a develop version" >&2
+              exit 1
+            fi
+            RELEASE_TARGET="$GITHUB_SHA"
+          else
+            if ! RELEASE_VERSION="$(git tag --list 'v*' | sh .github/scripts/release-version.sh "$PR_TITLE")"; then
+              echo "The release pull request title must be exactly 'release vX.Y.Z' for a new version" >&2
+              exit 1
+            fi
+            RELEASE_TARGET="$MERGE_SHA"
+          fi
+          echo "RELEASE_VERSION=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_TARGET=$RELEASE_TARGET" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: version
+    runs-on: macos-15
+    permissions:
+      contents: read
+      attestations: read
+    outputs:
+      tarball_sha256: ${{ steps.hash.outputs.tarball_sha256 }}
+    env:
+      RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+    steps:
+      - name: Check out the release commit on macOS
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.version.outputs.release_target }}
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: "10.0.x"
+
+      # The pinned RoomKit, from its public GitHub release, into the folder feed nuget.config names.
+      - name: Fetch RoomKit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          ROOMKIT_VERSION="$(sed -n 's/.*<PackageReference Include="RoomKit" Version="\([^"]*\)".*/\1/p' src/PlayRoom.Server/PlayRoom.Server.csproj)"
+          if ! printf '%s\n' "$ROOMKIT_VERSION" | grep -Eqx '(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?'; then
+            echo "PlayRoom.Server.csproj pins no single SemVer RoomKit version" >&2
+            exit 1
+          fi
+          NUPKG="RoomKit.$ROOMKIT_VERSION.nupkg"
+          WORK="$RUNNER_TEMP/roomkit"
+          gh release download "v$ROOMKIT_VERSION" --repo nothisisnotdaniel/roomkit --pattern "$NUPKG" --pattern SHA256SUMS --dir "$WORK"
+          (cd "$WORK" && grep -Fx "$(shasum -a 256 "$NUPKG")" SHA256SUMS > /dev/null) || {
+            echo "$NUPKG does not match the SHA256SUMS of RoomKit v$ROOMKIT_VERSION" >&2
+            exit 1
+          }
+          gh attestation verify "$WORK/$NUPKG" --repo nothisisnotdaniel/roomkit
+          FEED="$HOME/Library/Application Support/RoomKit/feed"
+          mkdir -p "$FEED"
+          cp "$WORK/$NUPKG" "$FEED/"
+
+      # The tests run on the normal build (no version override): they expect the version "dev".
+      - name: Test
+        run: dotnet test PlayRoom.slnx -c Release
+
+      # MSBuild reads every environment variable as a property, ignoring case, so a name like VERSION would become
+      # $(Version) here. That is why the names are RELEASE_VERSION and RELEASE_TARGET.
+      - name: Publish
+        run: dotnet publish src/PlayRoom.Server -c Release -r osx-arm64 --self-contained -p:Version="$RELEASE_VERSION" -o "$RUNNER_TEMP/publish"
+
+      - name: Sign
+        env:
+          SIGNING_CERT_P12: ${{ secrets.SIGNING_CERT_P12 }}
+          SIGNING_CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
+        run: |
+          if ! SHA1="$(sh .github/scripts/signing-cert.sh signing-cert.sha1)"; then
+            echo "signing-cert.sha1 is invalid; signing can't be turned off by a broken file" >&2
+            exit 1
+          fi
+          if [ -z "$SHA1" ]; then
+            echo "::warning::signing-cert.sha1 is missing, so this build is only ad-hoc signed"
+            exit 0
+          fi
+          if [ -z "$SIGNING_CERT_P12" ] || [ -z "$SIGNING_CERT_PASSWORD" ]; then
+            echo "signing-cert.sha1 is committed, but the SIGNING_CERT_P12 or SIGNING_CERT_PASSWORD secret is empty" >&2
+            exit 1
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          P12="$RUNNER_TEMP/signing.p12"
+          PUBLISH="$RUNNER_TEMP/publish"
+          trap 'rm -f "$P12"' EXIT
+          umask 077
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          printf '%s' "$SIGNING_CERT_P12" | base64 --decode > "$P12"
+          chmod 600 "$P12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # codesign finds an identity only in a keychain on the user search list, even with --keychain.
+          sh .github/scripts/signing-keychain.sh add "$KEYCHAIN" || exit 1
+          security import "$P12" -k "$KEYCHAIN" -f pkcs12 -P "$SIGNING_CERT_PASSWORD" -T /usr/bin/codesign > /dev/null
+          rm -f "$P12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          if ! sh .github/scripts/signing-keychain.sh check "$KEYCHAIN" "$SHA1"; then
+            echo "The SIGNING_CERT_P12 secret holds no code-signing identity with the fingerprint in signing-cert.sha1 ($SHA1)" >&2
+            exit 1
+          fi
+          # The native libraries and createdump first, the server executable last (it seals the folder around it).
+          for file in "$PUBLISH"/*.dylib "$PUBLISH/createdump"; do
+            if [ ! -e "$file" ]; then
+              continue
+            fi
+            codesign --force --options runtime --timestamp=none --keychain "$KEYCHAIN" --sign "$SHA1" "$file"
+          done
+          codesign --force --options runtime --timestamp=none --keychain "$KEYCHAIN" --sign "$SHA1" --identifier PlayRoom.Server --entitlements .github/signing/entitlements.plist -r='designated => identifier "PlayRoom.Server" and certificate leaf = H"'"$SHA1"'"' "$PUBLISH/PlayRoom.Server"
+
+      - name: Verify signature
+        run: |
+          if ! SHA1="$(sh .github/scripts/signing-cert.sh signing-cert.sha1)"; then
+            echo "signing-cert.sha1 is invalid" >&2
+            exit 1
+          fi
+          if [ -z "$SHA1" ]; then
+            echo "signing-cert.sha1 is missing; nothing to verify"
+            exit 0
+          fi
+          PUBLISH="$RUNNER_TEMP/publish"
+          REQUIREMENT="designated => identifier \"PlayRoom.Server\" and certificate leaf = H\"$SHA1\""
+          # Each signed file: a strict verify pinned to the certificate, and the hardened runtime flag.
+          for file in "$PUBLISH"/*.dylib "$PUBLISH/createdump" "$PUBLISH/PlayRoom.Server"; do
+            if [ ! -e "$file" ]; then
+              continue
+            fi
+            if [ "$file" = "$PUBLISH/PlayRoom.Server" ]; then
+              codesign --verify --strict -R="identifier \"PlayRoom.Server\" and certificate leaf = H\"$SHA1\"" "$file"
+            else
+              codesign --verify --strict -R="certificate leaf = H\"$SHA1\"" "$file"
+            fi
+            INFO="$(codesign -dv "$file" 2>&1)"
+            if ! printf '%s\n' "$INFO" | grep -Eq '^CodeDirectory .*flags=0x[0-9a-f]+\([^)]*runtime[^)]*\)'; then
+              echo "$file is not signed with the hardened runtime" >&2
+              exit 1
+            fi
+          done
+          DESIGNATED="$(codesign -d -r- "$PUBLISH/PlayRoom.Server" 2>&1)"
+          if ! printf '%s\n' "$DESIGNATED" | grep -Fxiq "$REQUIREMENT"; then
+            echo "PlayRoom.Server does not have the pinned designated requirement" >&2
+            exit 1
+          fi
+          # No Mach-O file may be left outside the signed set (top-level *.dylib, createdump, PlayRoom.Server).
+          find "$PUBLISH" -type f > "$RUNNER_TEMP/publish-files"
+          while IFS= read -r file; do
+            NAME="${file#"$PUBLISH/"}"
+            case "$NAME" in
+              */*) ;;
+              PlayRoom.Server | createdump | *.dylib) continue ;;
+            esac
+            case "$(file -b "$file")" in
+              *Mach-O*)
+                echo "$NAME is a Mach-O file that was not signed" >&2
+                exit 1
+                ;;
+            esac
+          done < "$RUNNER_TEMP/publish-files"
+          rm -f "$RUNNER_TEMP/publish-files"
+
+      # Runs even when an earlier step failed, so the private key never outlives the run's temporary keychain.
+      - name: Remove signing keychain
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/signing.p12"
+          if [ -e "$RUNNER_TEMP/signing.keychain-db" ]; then
+            sh .github/scripts/signing-keychain.sh remove "$RUNNER_TEMP/signing.keychain-db" || echo "::warning::Could not take the signing keychain off the keychain search list"
+            security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
+          fi
+
+      - name: Smoke check the published server
+        run: |
+          ACTUAL="$("$RUNNER_TEMP/publish/PlayRoom.Server" version)"
+          if [ "$ACTUAL" != "PlayRoom $RELEASE_VERSION" ]; then
+            echo "PlayRoom.Server version printed '$ACTUAL', expected 'PlayRoom $RELEASE_VERSION'" >&2
+            exit 1
+          fi
+
+      - name: Pack
+        env:
+          # No ._ AppleDouble entries for extended attributes: the tarball holds only the publish output.
+          COPYFILE_DISABLE: "1"
+        run: |
+          NAME="playroom-$RELEASE_VERSION-osx-arm64"
+          mkdir -p "$RUNNER_TEMP/pack" dist
+          mv "$RUNNER_TEMP/publish" "$RUNNER_TEMP/pack/$NAME"
+          if [ ! -f "$RUNNER_TEMP/pack/$NAME/wwwroot/index.html" ]; then
+            echo "The publish output has no wwwroot/index.html" >&2
+            exit 1
+          fi
+          # The updater installs this copy of itself with the release it swaps in.
+          cp scripts/updater.sh "$RUNNER_TEMP/pack/$NAME/updater.sh"
+          chmod 0755 "$RUNNER_TEMP/pack/$NAME/updater.sh"
+          tar -czf "dist/$NAME.tar.gz" -C "$RUNNER_TEMP/pack" "$NAME"
+
+      # The release job checks the downloaded tarball against this hash, which travels as a job output, apart
+      # from the artifact store.
+      - name: Hash the tarball
+        id: hash
+        run: |
+          set -o pipefail
+          TARBALL_SHA256="$(shasum -a 256 "dist/playroom-$RELEASE_VERSION-osx-arm64.tar.gz" | cut -d ' ' -f 1)"
+          echo "tarball_sha256=$TARBALL_SHA256" >> "$GITHUB_OUTPUT"
+
+      - name: Save the tarball
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-release
+          path: dist/playroom-${{ env.RELEASE_VERSION }}-osx-arm64.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    needs: [version, macos]
+    # Builds nothing: it checks, sums, attests and publishes the file the macos job made.
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      RELEASE_VERSION: ${{ needs.version.outputs.release_version }}
+      RELEASE_TARGET: ${{ needs.version.outputs.release_target }}
+    steps:
+      - name: Check out the release commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.version.outputs.release_target }}
+          persist-credentials: false
+
+      - name: Collect the build artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: '*-release'
+          merge-multiple: true
+          path: dist
+
+      # Exactly the one built file, byte-identical to what the macos job hashed before the upload. The hash comes
+      # from the job output, a separate channel from the artifact store, and reaches the shell only through env:.
+      - name: Check the downloaded file
+        env:
+          TARBALL_SHA256: ${{ needs.macos.outputs.tarball_sha256 }}
+        run: |
+          TARBALL="playroom-$RELEASE_VERSION-osx-arm64.tar.gz"
+          if [ ! -f "dist/$TARBALL" ] || [ -L "dist/$TARBALL" ]; then
+            echo "The downloaded artifact has no file $TARBALL" >&2
+            exit 1
+          fi
+          for entry in dist/* dist/.[!.]* dist/..?*; do
+            if [ ! -e "$entry" ] && [ ! -L "$entry" ]; then
+              continue
+            fi
+            if [ "${entry#dist/}" != "$TARBALL" ]; then
+              echo "The downloaded artifact holds an unexpected file: ${entry#dist/}" >&2
+              exit 1
+            fi
+          done
+          case "$TARBALL_SHA256" in
+            '' | *[!0-9a-f]*)
+              echo "The reported hash is not 64 lower-case hex characters" >&2
+              exit 1
+              ;;
+          esac
+          if [ "${#TARBALL_SHA256}" -ne 64 ]; then
+            echo "The reported hash is not 64 lower-case hex characters" >&2
+            exit 1
+          fi
+          # No pipe, so a failed shasum fails the step itself.
+          if ! ACTUAL="$(shasum -a 256 "dist/$TARBALL")"; then
+            echo "Could not hash dist/$TARBALL" >&2
+            exit 1
+          fi
+          if [ "${ACTUAL%% *}" != "$TARBALL_SHA256" ]; then
+            echo "dist/$TARBALL does not match the hash the macos job reported" >&2
+            exit 1
+          fi
+
+      - name: Checksums
+        run: |
+          cd dist
+          shasum -a 256 "playroom-$RELEASE_VERSION-osx-arm64.tar.gz" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/playroom-${{ env.RELEASE_VERSION }}-osx-arm64.tar.gz
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Left unquoted below on purpose: when empty it must add no argument at all.
+          PRERELEASE=""
+          case "$RELEASE_VERSION" in
+            *-*) PRERELEASE="--prerelease" ;;
+          esac
+          gh release create "v$RELEASE_VERSION" "dist/playroom-$RELEASE_VERSION-osx-arm64.tar.gz" dist/SHA256SUMS --title "PlayRoom $RELEASE_VERSION" --generate-notes --target "$RELEASE_TARGET" $PRERELEASE
+
+      # Housekeeping after a proper release: delete the -develop prereleases (and their tags) at or below the
+      # release (.github/scripts/old-prereleases.sh). It runs only after the release was created, so
+      # continue-on-error cannot hide a failed release, only a failed prune.
+      - name: Prune old prereleases
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$RELEASE_VERSION" in
+            *-*)
+              echo "Version $RELEASE_VERSION is a prerelease; nothing to prune"
+              exit 0
+              ;;
+          esac
+          # run: is bash -e without pipefail: a failed listing must fail the step (a warning).
+          set -o pipefail
+          # Tag names are external text: they reach the shell only as data, and only exact
+          # v<X.Y.Z>-develop.<n> tags at or below the release come out of the filter.
+          gh release list --limit 1000 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' |
+            sh .github/scripts/old-prereleases.sh "$RELEASE_VERSION" |
+            while IFS= read -r tag; do
+              echo "Deleting prerelease $tag"
+              gh release delete "$tag" --cleanup-tag --yes || echo "::warning::Could not delete prerelease $tag"
+            done
