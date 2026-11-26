@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PlayRoom.Server/PlayRoom.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PlayRoom.Server.Tests/PlayRoom.Server.Tests.csproj" />
+  </Folder>
+</Solution>
