@@ -1,0 +1,147 @@
+/* PlayRoom's own styles for play.js (playtest panel, verdict, Games, Assets, feel checks). The shared styles and
+   colour variables are RoomKit's app.css; this file only adds to them and uses its variables. */
+
+.play-panel, .play-verdict, .play-game, .play-feel-checks, .play-feel-actions {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+
+.play-summary, .play-feel-summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-weight: 600;
+}
+
+.play-facts, .play-note, .play-gate-detail, .play-shot-name, .play-feel-what {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.play-subtitle {
+  font-size: 0.95rem;
+  margin: 14px 0 6px;
+}
+
+.play-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow-x: auto;
+}
+
+.play-table th, .play-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.play-gates, .play-bad-runs, .play-budgets, .play-targets, .play-feel-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.play-gate, .play-budget {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+
+.play-budget-name {
+  min-width: 9em;
+}
+
+.play-budget-meter {
+  flex: 1;
+  max-width: 12em;
+}
+
+.play-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.play-shot {
+  margin: 0;
+}
+
+.play-shot-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  image-rendering: pixelated;
+}
+
+.play-facts-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.play-facts-list dt {
+  color: var(--muted);
+}
+
+.play-facts-list dd {
+  margin: 0;
+}
+
+.play-command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+
+.play-command-text {
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 4px 8px;
+  overflow-x: auto;
+  white-space: pre;
+  flex: 1;
+  min-width: 0;
+}
+
+.play-feel {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.play-feel:last-child {
+  border-bottom: none;
+}
+
+.play-feel-what {
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+
+.play-problems ul {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.card-flags, .job-flags {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+#games, #assets {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 16px 96px;
+}
