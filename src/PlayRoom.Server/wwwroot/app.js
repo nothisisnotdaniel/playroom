@@ -4,7 +4,7 @@
 const Texts = {
   unreachable: "Can't reach the server.",
   unreadable: "Can't read backlog.md. Reload to try again.",
-  noWorktree: "The factory's develop worktree is missing. Run any job.py backlog command once to create it.",
+  noWorktree: "The factory's develop worktree is missing. The next factory job (/game --project factory) creates it.",
   notDevelop: "The factory's develop folder is not its develop worktree. Move it away or set FACTORY_DEVELOP_DIR, then reload.",
   noTitle: "(no title)",
   noLines: "No backlog lines.",
@@ -631,15 +631,19 @@ function renderProject(project) {
   return section;
 }
 
-// Replaces the backlog under the search box and the feel checks (play.js); both stay, so the search field keeps its
-// text and focus and the feel checks stay under the tasks count.
-function show(nodes) {
+// Replaces the backlog around the search box and the feel checks (play.js); both stay, so the search field keeps its
+// text and focus. The order is: search box, project picker (when given), feel checks, then the nodes, so the picker
+// is always at the top, above every list (the same place updateBacklogPicker puts it).
+function show(nodes, picker = null) {
   const box = backlogSearchBox();
   const feel = document.getElementById("feel-checks");
   for (const child of [...document.getElementById("backlogs").children]) {
     if (child !== box && child !== feel) {
       child.remove();
     }
+  }
+  if (picker !== null) {
+    box.after(picker);
   }
   feel.after(...nodes);
 }
@@ -757,7 +761,7 @@ function updateBacklogPicker(main) {
 function showProjects(projects) {
   readableProjects = gamesFirst(readableNames(projects));
   const sections = projects.map(renderProject);
-  show(readableProjects.length > 0 ? [renderBacklogPicker(), ...sections] : sections);
+  show(sections, readableProjects.length > 0 ? renderBacklogPicker() : null);
 }
 
 // The backlogs response; throws on a network error or an error status.
@@ -815,7 +819,6 @@ async function refreshBacklogs(names) {
     restoreListScroll(main, scroll);
     return [];
   }
-  const picker = main.querySelector(":scope > div.backlog-picker");
   const wanted = new Set(names);
   const left = [];
   const listed = new Set();
@@ -838,10 +841,8 @@ async function refreshBacklogs(names) {
       old.replaceWith(next);
     } else if (previous) {
       previous.after(next);
-    } else if (picker !== null) {
-      picker.after(next);
     } else {
-      backlogSearchBox().after(next);
+      document.getElementById("feel-checks").after(next);
     }
     previous = next;
   }
