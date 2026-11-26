@@ -12,7 +12,7 @@ Every agent reads this file before working on PlayRoom. Keep it short and accura
   that belongs to every room goes to RoomKit; PlayRoom takes a new package version.
 - **Identity, which must never clash with ControlRoom:** port `8110`, data folder
   `~/Library/Application Support/PlayRoom/` (token `access-token`), LaunchAgent labels `local.playroom.server` and
-  `local.playroom.updater`, release repository `placeholder/playroom` (a placeholder until there is a remote),
+  `local.playroom.updater`, release repository `nothisisnotdaniel/playroom` (private, no releases yet),
   release archives `playroom-*`, Windows tasks prefixed `PlayRoom`. These values sit in `PlayRoomApp.Options` and
   in the app block at the top of each script in `scripts/`; change them together.
 - **Factory root:** always given with `--FactoryRoot <path>` (there is no parent-folder default: PlayRoom does not

@@ -7,7 +7,7 @@ $TaskPrefix = 'PlayRoom'
 $ServerName = 'playroom.exe'
 $ZipPrefix = 'playroom'
 $AppPort = 8110
-$Repository = 'placeholder/playroom'
+$Repository = 'nothisisnotdaniel/playroom'
 $JobsFolder = 'factory/jobs'
 $JobFile = 'state.json'
 # roomkit:app-end

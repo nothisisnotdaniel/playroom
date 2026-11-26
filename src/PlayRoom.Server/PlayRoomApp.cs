@@ -7,8 +7,8 @@ namespace PlayRoom.Server;
 internal static class PlayRoomApp
 {
     /// <summary>The app's options. The version is this assembly's informational version (<c>dev</c> without
-    /// <c>-p:Version</c>), never RoomKit's. The release repository is a placeholder until PlayRoom has a
-    /// remote.</summary>
+    /// <c>-p:Version</c>), never RoomKit's. Releases come from the GitHub repository
+    /// <c>nothisisnotdaniel/playroom</c>.</summary>
     public static RoomKitOptions Options { get; } = new()
     {
         AppName = "PlayRoom",
@@ -16,7 +16,7 @@ internal static class PlayRoomApp
         DataFolderName = "PlayRoom",
         SolutionFileName = "PlayRoom.slnx",
         DefaultPort = 8110,
-        ReleaseRepository = "placeholder/playroom",
+        ReleaseRepository = "nothisisnotdaniel/playroom",
         CaptureNote = "Draft from PlayRoom",
         InformationalVersion = typeof(PlayRoomApp).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,

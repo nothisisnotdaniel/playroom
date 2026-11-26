@@ -49,9 +49,17 @@ Then open `https://<mac>.<tailnet>.ts.net:8443/`. Without ControlRoom on 443, se
 
 ## Keep it running
 
-`scripts/launch-agent.sh` installs the LaunchAgents `local.playroom.server` and `local.playroom.updater`.
-`scripts/launch-agent.ps1` sets up the Windows tasks. The updater looks for releases at `placeholder/playroom`, which
-is a placeholder until PlayRoom has a release repository. Until then the update check reports nothing.
+`scripts/launch-agent.sh` installs the LaunchAgent `local.playroom.server` (and, with `--release`, the updater
+`local.playroom.updater`). PlayRoom sits next to the factory root, not inside it, so pass the root, and the tailnet
+name and port when it is served on the tailnet:
+
+```bash
+scripts/launch-agent.sh install --factory-root /path/to/GameFactory --tailnet-host <mac>.<tailnet>.ts.net --tailnet-port 8443
+```
+
+Run it again after you pull changes: it publishes the server again and restarts it. `scripts/launch-agent.ps1` sets
+up the Windows tasks. Releases would come from `nothisisnotdaniel/playroom`, which has none yet, so use the install
+from source above rather than `--release`.
 
 PlayRoom and ControlRoom can run side by side: they use different ports (8110 and 8100), folders and labels.
 
