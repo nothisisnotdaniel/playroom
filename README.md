@@ -51,10 +51,12 @@ Then open `https://<mac>.<tailnet>.ts.net:8443/`. Without ControlRoom on 443, se
 
 `scripts/launch-agent.sh` installs the LaunchAgent `local.playroom.server` (and, with `--release`, the updater
 `local.playroom.updater`). PlayRoom sits next to the factory root, not inside it, so pass the root, and the tailnet
-name and port when it is served on the tailnet:
+name and port when it is served on the tailnet. Notifications on the iPhone need a push subject: a `mailto:` address
+or `https://` page of yours (Apple refuses the default `mailto:playroom@localhost`, and the test notification then
+fails with 403):
 
 ```bash
-scripts/launch-agent.sh install --factory-root /path/to/GameFactory --tailnet-host <mac>.<tailnet>.ts.net --tailnet-port 8443
+scripts/launch-agent.sh install --factory-root /path/to/GameFactory --tailnet-host <mac>.<tailnet>.ts.net --tailnet-port 8443 --push-subject mailto:<you>@<your-domain>
 ```
 
 Run it again after you pull changes: it publishes the server again and restarts it. `scripts/launch-agent.ps1` sets

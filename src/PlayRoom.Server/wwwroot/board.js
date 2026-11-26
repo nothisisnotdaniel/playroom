@@ -372,7 +372,7 @@ function renderCard(job) {
   const head = element("div", "card-head");
   const name = element("span", "card-id");
   if (asText(job.project)) {
-    name.appendChild(element("span", "card-project", asText(job.project)));
+    name.appendChild(element("span", "card-project", projectLabel(asText(job.project))));
     name.appendChild(element("span", null, " · "));
   }
   name.appendChild(element("span", null, id));
@@ -465,7 +465,7 @@ function projectNames() {
       names.add(job.project);
     }
   }
-  return [...names].sort();
+  return gamesFirst([...names].sort());
 }
 
 function renderFilter(names) {
@@ -473,7 +473,7 @@ function renderFilter(names) {
   filter.hidden = names.length < 2;
   const buttons = [];
   for (const name of ["", ...names]) {
-    const button = element("button", "filter-button", name || BoardTexts.allProjects);
+    const button = element("button", "filter-button", name ? projectLabel(name) : BoardTexts.allProjects);
     button.type = "button";
     button.setAttribute("aria-pressed", name === selectedProject ? "true" : "false");
     button.addEventListener("click", () => {
@@ -492,7 +492,9 @@ function renderBoard() {
     selectedProject = "";
   }
   renderFilter(names);
-  const shown = selectedProject ? boardJobs.filter((job) => job.project === selectedProject) : boardJobs;
+  // Game jobs first, then the factory's own; otherwise in answer order (the sort is stable).
+  const shown = (selectedProject ? boardJobs.filter((job) => job.project === selectedProject) : [...boardJobs])
+    .sort((a, b) => Number(a.project === FactoryName) - Number(b.project === FactoryName));
   const stuck = shown.filter((job) => job.stage === "needs-human");
   const nodes = stuck.length > 0 ? [renderStuck(stuck)] : [];
   if (boardJobs.length === 0) {

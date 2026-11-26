@@ -68,8 +68,7 @@ const BacklogGroupsKey = "playroom-backlog-groups";
 // its fixed text can be chosen and read).
 let readableProjects = [];
 
-// The factory's own backlog (#147): its section has no status or release line.
-const FactoryName = "factory";
+// The factory's own backlog (#147, FactoryName in room.js): its section has no status or release line.
 
 // The fixed text for the factory entry's reason, or null for any other value; never server text.
 function reasonText(project) {
@@ -586,7 +585,7 @@ function renderProject(project) {
   section.hidden = backlogSectionHidden(name);
   const version = asText(project && project.version);
   const head = element("div", "project-head");
-  head.appendChild(element("h2", null, asText(project && project.name)));
+  head.appendChild(element("h2", null, projectLabel(asText(project && project.name))));
   section.appendChild(head);
   // Edits go to the backlog branch while a job runs; a fixed text, never git output.
   if (project && project.pending === true) {
@@ -687,7 +686,7 @@ function fillBacklogPicker(select) {
   const options = readableProjects.map((name) => {
     const option = document.createElement("option");
     option.value = name;
-    option.textContent = name;
+    option.textContent = projectLabel(name);
     return option;
   });
   select.replaceChildren(...options);
@@ -756,7 +755,7 @@ function updateBacklogPicker(main) {
 
 // The picker (when a project is readable) and every section; renderProject hides all but the chosen one.
 function showProjects(projects) {
-  readableProjects = readableNames(projects);
+  readableProjects = gamesFirst(readableNames(projects));
   const sections = projects.map(renderProject);
   show(readableProjects.length > 0 ? [renderBacklogPicker(), ...sections] : sections);
 }
@@ -800,7 +799,7 @@ async function refreshBacklogs(names) {
   }
   const main = document.getElementById("backlogs");
   const projects = asList(data && data.projects);
-  readableProjects = readableNames(projects);
+  readableProjects = gamesFirst(readableNames(projects));
   const sections = new Map();
   for (const section of main.querySelectorAll(":scope > section.project")) {
     sections.set(section.dataset.project, section);

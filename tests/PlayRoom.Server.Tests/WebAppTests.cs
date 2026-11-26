@@ -54,6 +54,32 @@ public sealed class WebAppTests
     }
 
     [Fact]
+    public async Task FactoryProject_IsLabelledAndShownAfterTheGames()
+    {
+        string room = await GetText("/room.js");
+        string board = await GetText("/board.js");
+        string app = await GetText("/app.js");
+        string play = await GetText("/play.js");
+
+        Assert.Contains("const FactoryName = \"factory\";", room, StringComparison.Ordinal);
+        Assert.Contains("const FactoryLabel = \"GameFactory (the factory itself)\";", room, StringComparison.Ordinal);
+        Assert.Contains("function projectLabel(name)", room, StringComparison.Ordinal);
+        Assert.Contains("function gamesFirst(names)", room, StringComparison.Ordinal);
+        // One declaration only: a second const of the same name in another classic script stops the page.
+        Assert.DoesNotContain("const FactoryName", board + app + play, StringComparison.Ordinal);
+
+        // Board cards, the board filter, the backlog heading and picker, and the feel checks show the label.
+        Assert.Contains("\"card-project\", projectLabel(", board, StringComparison.Ordinal);
+        Assert.Contains("name ? projectLabel(name) : BoardTexts.allProjects", board, StringComparison.Ordinal);
+        Assert.Contains("return gamesFirst([...names].sort());", board, StringComparison.Ordinal);
+        Assert.Contains("Number(a.project === FactoryName) - Number(b.project === FactoryName)", board, StringComparison.Ordinal);
+        Assert.Contains("element(\"h2\", null, projectLabel(", app, StringComparison.Ordinal);
+        Assert.Contains("option.textContent = projectLabel(name);", app, StringComparison.Ordinal);
+        Assert.Contains("readableProjects = gamesFirst(readableNames(projects));", app, StringComparison.Ordinal);
+        Assert.Contains("\"play-feel-title\", projectLabel(", play, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Play_DrawsTheGameViews()
     {
         string play = await GetText("/play.js");

@@ -569,7 +569,7 @@ async function showAssets(name) {
 
 function feelCheckItem(task) {
   const item = element("li", "play-feel");
-  const link = element("a", "play-feel-title", asText(task.project) + " #" + asNumber(task.number) + " "
+  const link = element("a", "play-feel-title", projectLabel(asText(task.project)) + " #" + asNumber(task.number) + " "
     + asText(task.title));
   link.href = storyHash(asText(task.project), asNumber(task.number));
   item.appendChild(link);

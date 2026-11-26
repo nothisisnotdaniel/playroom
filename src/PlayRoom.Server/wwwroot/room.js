@@ -16,7 +16,7 @@ const PushAppTexts = {
 
 // Service worker (sw.js). Caches only the app shell. Bump the version whenever a shell file changes; ShellCacheLedger
 // checks it.
-const CacheVersion = "v1";
+const CacheVersion = "v2";
 const CacheName = "playroom-shell-" + CacheVersion;
 
 const Shell = [
@@ -52,3 +52,18 @@ const PushAppTitles = {
 const PushFallbackTitle = "PlayRoom";
 const PushDefaultTag = "playroom";
 const PushUpdatePrefix = "PlayRoom ";
+
+// The factory's own project: the jobs and backlog that change GameFactory itself, not a game. Its name on disk and
+// in the API stays "factory"; the page shows it under a clear label and after the games.
+const FactoryName = "factory";
+const FactoryLabel = "GameFactory (the factory itself)";
+
+// The name to show for a project; the name itself is still what links, filters and stored picks use.
+function projectLabel(name) {
+  return name === FactoryName ? FactoryLabel : name;
+}
+
+// The names in the same order, with the factory moved after every game.
+function gamesFirst(names) {
+  return [...names.filter((name) => name !== FactoryName), ...names.filter((name) => name === FactoryName)];
+}
