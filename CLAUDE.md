@@ -5,7 +5,7 @@ Every agent reads this file before working on PlayRoom. Keep it short and accura
 - **What it is:** the control room for GameFactory. A small ASP.NET Core server on the user's Mac reads a
   GameFactory root (the folder that holds `factory/` and the game folders) and serves one web app (browser and
   home-screen PWA): jobs with their playtest results and screenshots, the backlogs with feel checks, one card per
-  game, and each game's asset ledger. It is built on **RoomKit 0.3.0** the same way ControlRoom is: RoomKit gives the
+  game, and each game's asset ledger. It is built on **RoomKit 0.3.1-local.1** (0.3.0 plus `--TailnetPort`, packed locally from ControlRoom `develop`) the same way ControlRoom is: RoomKit gives the
   host, token gate, `Host` check, CSP, push, update check, backlogs, stories, search, capture, history and doctor;
   PlayRoom adds GameFactory's job format (`GameJobFormat`, `IJobFormat`) and its own read-only endpoints.
 - **Shared code comes from RoomKit only.** Never copy RoomKit's (or ControlRoom's) source into this repo. A change

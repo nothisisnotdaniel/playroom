@@ -19,7 +19,7 @@ and `/game rework <id> <note>` in Claude Code.
 ## Needs
 
 - .NET 10 SDK.
-- The RoomKit 0.3.0 package in the local feed at `~/Library/Application Support/RoomKit/feed` (see `nuget.config`).
+- The RoomKit 0.3.1-local.1 package in the local feed at `~/Library/Application Support/RoomKit/feed` (see `nuget.config`).
 
 ## Run it
 
@@ -33,8 +33,19 @@ Then open http://127.0.0.1:8110/. The first visit asks for the access token. Thi
 dotnet run --project src/PlayRoom.Server -- token
 ```
 
-PlayRoom listens on 127.0.0.1 only. To use it from your phone, serve it on your tailnet, the same way as ControlRoom,
-and pass `--TailnetHost <mac>.<tailnet>.ts.net`.
+PlayRoom listens on 127.0.0.1 only. To use it from your phone, serve it on your tailnet. ControlRoom already has
+port 443 of the Mac's tailnet name, so give PlayRoom port 8443:
+
+```bash
+tailscale serve --bg --https=8443 http://127.0.0.1:8110
+```
+
+```bash
+dotnet run --project src/PlayRoom.Server -- --FactoryRoot /path/to/GameFactory --TailnetHost <mac>.<tailnet>.ts.net --TailnetPort 8443
+```
+
+Then open `https://<mac>.<tailnet>.ts.net:8443/`. Without ControlRoom on 443, serve it on 443 and leave out
+`--TailnetPort`.
 
 ## Keep it running
 

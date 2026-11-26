@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="RoomKit" Version="0.3.0" />
+    <PackageReference Include="RoomKit" Version="0.3.1-local.1" />
   </ItemGroup>
 
   <ItemGroup>
