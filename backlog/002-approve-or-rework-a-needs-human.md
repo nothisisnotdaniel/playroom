@@ -14,4 +14,4 @@ Today an escalated GameFactory job can only be decided with /game approve or /ga
 
 ## Notes
 
-Needs a matching change in GameFactory: the /game skill (and job.py) must pick up the request file, the way /factory does for ControlRoom. Add that item to GameFactory's factory backlog first. The README line "PlayRoom reads the factory and never changes its jobs" changes with this.
+Needs a matching change in GameFactory: the /game skill (and job.py) must pick up the request file (for ControlRoom the same pickup is Claude factory #16, not built yet). That is GameFactory factory #5 (Pick up and clear approve and rework requests from PlayRoom, added 27 Nov), which uses the same human.json format. The README line "PlayRoom reads the factory and never changes its jobs" changes with this.
