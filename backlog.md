@@ -13,3 +13,4 @@ Each story has one `Category: <name>` line after its story sentence, one of: fea
 - [ ] [#4](backlog/004-move-history-and-health-behind-a.md) Move History and Health behind a More menu in the tab bar
 - [ ] [#5](backlog/005-show-when-the-updater-last-checked.md) Show when the updater last checked for updates
 - [ ] [#6](backlog/006-show-each-game-s-ci-status.md) Show each game's CI status in the Health view
+- [ ] [#7](backlog/007-this-week-view-and-badge-from.md) This week view and badge from the weekly plan (after: factory#102)
